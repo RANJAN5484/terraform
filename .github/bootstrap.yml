@@ -68,3 +68,5 @@ jobs:
           echo "Resource Group: $RG_NAME"
           echo "Storage Account: $STORAGE_NAME"
           echo "Container: $CONTAINER_NAME"
+
+          
