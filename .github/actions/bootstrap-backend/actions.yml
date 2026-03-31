@@ -1,0 +1,81 @@
+name: "Bootstrap Terraform Backend"
+description: "Creates RG, Storage Account, and Container for Terraform remote backend."
+
+inputs:
+  region:
+    description: "Region key (eu/nar/cn)"
+    required: true
+  stage:
+    description: "Stage (dev/int/apr/prd)"
+    required: true
+  location:
+    description: "Azure Location (e.g., germanywestcentral)"
+    required: true
+    default: "germanywestcentral"
+
+runs:
+  using: "composite"
+  steps:
+
+    - name: Register required Azure providers
+      shell: bash
+      run: |
+        az provider register --namespace Microsoft.Storage --wait
+        az provider register --namespace Microsoft.KeyVault --wait
+        az provider register --namespace Microsoft.DocumentDB --wait
+        az provider register --namespace Microsoft.ManagedIdentity --wait
+        az provider register --namespace Microsoft.OperationalInsights --wait
+        az provider register --namespace Microsoft.DataProtection --wait
+
+    - name: Define backend names
+      id: names
+      shell: bash
+      run: |
+        RG_NAME="cube-tfstate-${{ inputs.region }}-${{ inputs.stage }}"
+        STORAGE_NAME="cubetf${{ inputs.region }}${{ inputs.stage }}state"
+        CONTAINER_NAME="tfstate"
+
+        echo "rg_name=$RG_NAME" >> $GITHUB_OUTPUT
+        echo "storage_name=$STORAGE_NAME" >> $GITHUB_OUTPUT
+        echo "container_name=$CONTAINER_NAME" >> $GITHUB_OUTPUT
+
+    - name: Create Resource Group
+      shell: bash
+      run: |
+        echo "Creating Resource Group: ${{ steps.names.outputs.rg_name }}"
+        az group create \
+          --name "${{ steps.names.outputs.rg_name }}" \
+          --location "${{ inputs.location }}"
+
+    - name: Create Storage Account
+      shell: bash
+      run: |
+        echo "Creating Storage Account: ${{ steps.names.outputs.storage_name }}"
+        
+        # Check if storage account exists
+        if az storage account show --name "${{ steps.names.outputs.storage_name }}" >/dev/null 2>&1; then
+          echo "Storage Account already exists. Skipping creation."
+        else
+          az storage account create \
+            --name "${{ steps.names.outputs.storage_name }}" \
+            --resource-group "${{ steps.names.outputs.rg_name }}" \
+            --location "${{ inputs.location }}" \
+            --sku Standard_LRS \
+            --allow-blob-public-access false
+        fi
+
+    - name: Create Blob Container
+      shell: bash
+      run: |
+        echo "Creating tfstate container..."
+        az storage container create \
+          --name "${{ steps.names.outputs.container_name }}" \
+          --account-name "${{ steps.names.outputs.storage_name }}"
+
+    - name: Output Backend Information
+      shell: bash
+      run: |
+        echo "----- BACKEND CREATION COMPLETE -----"
+        echo "Resource Group:     ${{ steps.names.outputs.rg_name }}"
+        echo "Storage Account:    ${{ steps.names.outputs.storage_name }}"
+        echo "Container:          ${{ steps.names.outputs.container_name }}"

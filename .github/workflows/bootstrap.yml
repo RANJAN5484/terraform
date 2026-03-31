@@ -1,0 +1,60 @@
+name: Bootstrap Backend
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "Stage (dev/int/apr/prd)"
+        required: true
+        type: choice
+        options:
+          - dev
+          - int
+          - apr
+          - prd
+      region:
+        description: "Region (eu/nar/cn)"
+        required: true
+        type: choice
+        options:
+          - eu
+          - nar
+          - cn
+
+jobs:
+  bootstrap:
+    environment: ${{ github.event.inputs.region }}-${{ github.event.inputs.stage }}
+    runs-on:
+      group: CUBE
+
+    steps:
+      - name: Checkout repository
+        working-directory: ${{ runner.temp }}
+        run: |
+          GIT_SSL_NO_VERIFY=true git clone https://${{ secrets.TECH_USER_PAT }}@git.hub.vwgroup.com/AEB/cube-backend-infra.git
+          cd cube-backend-infra
+          git checkout ${{ github.ref_name }}
+
+      - name: Azure Login
+        env:
+          AZURE_SP: ${{ secrets.AZURE_CREDENTIALS }}
+        run: |
+          client_id=$(echo "$AZURE_SP" | jq -r '.clientId')
+          client_secret=$(echo "$AZURE_SP" | jq -r '.clientSecret')
+          tenant_id=$(echo "$AZURE_SP" | jq -r '.tenantId')
+          subscription_id=$(echo "$AZURE_SP" | jq -r '.subscriptionId')
+
+          az login \
+            --service-principal \
+            --username "$client_id" \
+            --password "$client_secret" \
+            --tenant "$tenant_id"
+
+          az account set --subscription "$subscription_id"
+
+      - name: Bootstrap Backend
+        uses: ./.github/actions/bootstrap-backend
+        with:
+          region: ${{ github.event.inputs.region }}
+          stage:  ${{ github.event.inputs.stage }}
+          location: "germanywestcentral"
